@@ -15,10 +15,15 @@ locale = "en"
 # =============================================================================
 #
 # What this teaches:
-#   • Expected failure — `erratur` records a test whose failing assertion is a known defect, with no argument.
+#   • Expected failure — `erratur` (en `expect_failure`) takes no argument. The
+#     case passes only when its body escapes through the error channel; a body
+#     that completes cleanly fails the case (strict expected-failure).
 #   • Modifier position — it sits between the test name and the body, like `omitte` and `fragilis`.
 #
 # Common mistakes:
+#   • Marking a known-defect assertion with erratur — a failing `adfirma` is not
+#     an error-channel escape, so `faber test` still reports the case as failed.
+#     The case below fails under `faber test` for that reason.
 #   • Confusing erratur (expected failure) with omitte (skipped) — an erratur test still runs.
 #
 # See also: proba, fragilis, omitte
@@ -32,7 +37,7 @@ locale = "en"
 # EXPECTED OUTPUT:
 #   erratur declared
 
-test "known defect" expect_failure {
+test "assertion still fails" expect_failure {
     assert 1 + 1 ≡ 3
 }
 
