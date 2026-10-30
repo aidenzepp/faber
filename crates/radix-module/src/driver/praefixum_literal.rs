@@ -197,6 +197,7 @@ fn map_key_order(a: &MapKey, b: &MapKey) -> std::cmp::Ordering {
             // Variant keys tie within their own class; the `_ =>` fallthrough
             // below keeps the ordering total and literal emission reproducible.
             MapKey::Enum(_, _) => 5,
+            MapKey::Struct(_, _) => 6,
         }
     }
     match (a, b) {

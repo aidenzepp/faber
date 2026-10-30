@@ -1207,6 +1207,10 @@ pub enum MapKey {
     /// payload fields as `(name, key)` pairs, sorted by symbol so hashing is
     /// order-stable.
     Enum(DefId, Vec<(Symbol, MapKey)>),
+    /// A `genus` (class) key (faber#3): hashable when every field is. The
+    /// class's `DefId` plus its fields as `(name, key)` pairs, sorted by
+    /// symbol like [`MapKey::Enum`].
+    Struct(DefId, Vec<(Symbol, MapKey)>),
 }
 
 impl MapKey {
@@ -1221,15 +1225,8 @@ impl MapKey {
             MapKey::Str(v) => Value::Str(v.clone()),
             MapKey::Unit => Value::Nil,
             MapKey::Tuple(parts) => Value::Tuple(parts.iter().map(MapKey::to_value).collect()),
-            MapKey::Enum(def, parts) => Value::EnumVariant(
-                *def,
-                Rc::new(RefCell::new(
-                    parts
-                        .iter()
-                        .map(|(name, key)| (*name, key.to_value()))
-                        .collect(),
-                )),
-            ),
+            MapKey::Enum(def, parts) => Value::EnumVariant(*def, field_values(parts)),
+            MapKey::Struct(def, parts) => Value::Struct(*def, field_values(parts)),
         }
     }
 
@@ -1249,7 +1246,7 @@ impl MapKey {
                 .map(MapKey::document_key)
                 .collect::<Vec<_>>()
                 .join(","),
-            MapKey::Enum(def, parts) => {
+            MapKey::Enum(def, parts) | MapKey::Struct(def, parts) => {
                 let joined = parts
                     .iter()
                     .map(|(name, key)| format!("{}.{}", name.0, key.document_key()))
@@ -1259,6 +1256,31 @@ impl MapKey {
             }
         }
     }
+}
+
+/// The field cell a variant or class key reads back as.
+fn field_values(parts: &[(Symbol, MapKey)]) -> Rc<RefCell<FxHashMap<Symbol, Value>>> {
+    Rc::new(RefCell::new(
+        parts
+            .iter()
+            .map(|(name, key)| (*name, key.to_value()))
+            .collect(),
+    ))
+}
+
+/// The fields of a variant or class value as keys, sorted by symbol so an
+/// equal value hashes the same whatever its field map's order.
+fn field_keys(
+    fields: &RefCell<FxHashMap<Symbol, Value>>,
+    span: Span,
+) -> Result<Vec<(Symbol, MapKey)>, RunnerError> {
+    let mut parts: Vec<(Symbol, MapKey)> = fields
+        .borrow()
+        .iter()
+        .map(|(name, value)| Ok((*name, value.to_key(span)?)))
+        .collect::<Result<Vec<_>, _>>()?;
+    parts.sort_by_key(|(name, _)| name.0);
+    Ok(parts)
 }
 
 /// Insertion-ordered ledger (`tabulae<K, V>`): the native map from key to
@@ -1675,15 +1697,8 @@ impl Value {
                 .map(|item| item.to_key(span))
                 .collect::<Result<Vec<_>, _>>()
                 .map(MapKey::Tuple),
-            Value::EnumVariant(def, fields) => {
-                let mut parts: Vec<(Symbol, MapKey)> = fields
-                    .borrow()
-                    .iter()
-                    .map(|(name, value)| Ok((*name, value.to_key(span)?)))
-                    .collect::<Result<Vec<_>, _>>()?;
-                parts.sort_by_key(|(name, _)| name.0);
-                Ok(MapKey::Enum(*def, parts))
-            }
+            Value::EnumVariant(def, fields) => Ok(MapKey::Enum(*def, field_keys(fields, span)?)),
+            Value::Struct(def, fields) => Ok(MapKey::Struct(*def, field_keys(fields, span)?)),
             _ => Err(RunnerError::internal(
                 span,
                 "value is not a valid map/set key",
@@ -1912,7 +1927,7 @@ fn render_map_rows(
             MapKey::Bool(v) => display_bivalens(*v, order.tokens).to_owned(),
             MapKey::Unit => order.tokens.none.clone(),
             MapKey::Tuple(parts) => display_tuple_key(parts, order.tokens),
-            MapKey::Enum(..) => key.document_key(),
+            MapKey::Enum(..) | MapKey::Struct(..) => key.document_key(),
         };
         let val_str = value.display_typed(interner, order, span, float_width)?;
         parts.push(format!("{key_str}: {val_str}"));
