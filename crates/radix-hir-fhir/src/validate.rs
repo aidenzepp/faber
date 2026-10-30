@@ -1991,6 +1991,7 @@ fn collect_item_defs(items: &[radix_hir::HirItem], registry: &mut FxHashSet<radi
                     registry.insert(tp.def_id);
                 }
                 for method in &iface.methods {
+                    registry.insert(method.def_id);
                     for param in &method.params {
                         collect_param_defs(param, registry);
                     }

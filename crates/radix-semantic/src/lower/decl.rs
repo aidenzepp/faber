@@ -50,7 +50,7 @@ use radix_lexer::{Span, Symbol};
 use radix_syntax::{
     AstMutability, AstParamMode, BindingPattern, CallablePosture, ClassDecl, ClassMember,
     ClassMemberKind, EnumDecl, EnumValue, FuncDecl, ImportDecl, ImportKind, InterfaceDecl,
-    InterfaceMethod, Param, SchemaDecl, Stmt, TypeAliasDecl, TypeParam, UnionDecl, VarDecl,
+    InterfaceMethod, Param, SchemaDecl, Stmt, Trivia, TypeAliasDecl, TypeParam, UnionDecl, VarDecl,
     Variant,
 };
 
@@ -920,11 +920,15 @@ impl Lowerer<'_> {
         let variants = decl
             .members
             .iter()
-            .map(|member| HirVariant {
-                def_id: self.variant_def_for(def_id, member.name.name),
-                name: member.name.name,
-                fields: Vec::new(),
-                span: member.span,
+            .map(|member| {
+                let variant_def_id = self.variant_def_for(def_id, member.name.name);
+                self.register_member_trivia(variant_def_id, &member.leading_trivia);
+                HirVariant {
+                    def_id: variant_def_id,
+                    name: member.name.name,
+                    fields: Vec::new(),
+                    span: member.span,
+                }
             })
             .collect();
 
@@ -954,6 +958,19 @@ impl Lowerer<'_> {
             .unwrap_or_else(|| self.def_id_for(name))
     }
 
+    /// Register a member's leading comments under its `DefId`, the key the
+    /// Faber emitter reads them back by (see `write_member_trivia`).
+    fn register_member_trivia(&mut self, def_id: DefId, trivia: &[Trivia]) {
+        let member_trivia = self.hir_trivia(trivia);
+        if !member_trivia.is_empty() {
+            self.register_attachment(
+                HirTriviaOwnerKind::Member,
+                Some(HirOwnerRef::Def(def_id)),
+                member_trivia,
+            );
+        }
+    }
+
     fn lower_variant(&mut self, enum_def_id: DefId, variant: &Variant) -> HirVariant {
         let fields = variant
             .fields
@@ -965,8 +982,10 @@ impl Lowerer<'_> {
             })
             .collect();
 
+        let def_id = self.variant_def_for(enum_def_id, variant.name.name);
+        self.register_member_trivia(def_id, &variant.leading_trivia);
         HirVariant {
-            def_id: self.variant_def_for(enum_def_id, variant.name.name),
+            def_id,
             name: variant.name.name,
             fields,
             span: variant.span,
@@ -1081,11 +1100,7 @@ impl Lowerer<'_> {
             .iter()
             .map(|method| {
                 let hir_method = self.lower_interface_method(method);
-                // Interface signatures have no node or def id to back-reference.
-                let method_trivia = self.hir_trivia(&method.leading_trivia);
-                if !method_trivia.is_empty() {
-                    self.register_attachment(HirTriviaOwnerKind::Member, None, method_trivia);
-                }
+                self.register_member_trivia(hir_method.def_id, &method.leading_trivia);
                 hir_method
             })
             .collect();

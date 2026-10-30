@@ -360,8 +360,8 @@ impl super::FaberCodegen<'_> {
 
     /// Emit leading trivia owned by a member `DefId`.
     ///
-    /// Genus fields, genus methods, and enum variants carry one. Interface
-    /// methods do not, so they skip this helper.
+    /// Genus fields, genus methods, enum variants and interface methods carry
+    /// one. `@ shared` union fields have no `DefId`, so they skip this helper.
     ///
     /// `annotation_follows` drops the trivia run's trailing annotation-line
     /// terminator (see [`crate::trivia::without_following_annotation`]) — the
@@ -562,7 +562,15 @@ impl super::FaberCodegen<'_> {
                     writer.write(&self.symbol_to_string(field.name));
                     writer.newline();
                 }
-                writer.newline();
+                // Canonical region separator; when the first variant's trivia
+                // run owns the boundary, it already reproduces the blank line.
+                let first_variant_owns_boundary = e
+                    .variants
+                    .first()
+                    .is_some_and(|variant| self.trivia.for_def(variant.def_id).is_some());
+                if !first_variant_owns_boundary {
+                    writer.newline();
+                }
             }
             for (idx, variant) in e.variants.iter().enumerate() {
                 self.write_member_trivia(variant.def_id, false, writer);
@@ -631,6 +639,7 @@ impl super::FaberCodegen<'_> {
         writer.writeln(" {");
         writer.indented(|writer| {
             for method in &i.methods {
+                self.write_member_trivia(method.def_id, !method.availability.is_empty(), writer);
                 for availability in &method.availability {
                     self.write_availability(availability, surface, writer);
                 }

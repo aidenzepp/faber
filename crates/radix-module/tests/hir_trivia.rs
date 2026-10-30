@@ -234,8 +234,17 @@ fn comment_before_implendum_method_attaches_to_member_owner() {
         vec![" before method"]
     );
 
-    // Interface signatures carry no semantic back-reference.
-    assert_eq!(owner.semantic, None);
+    // The owner back-references the interface method's own def id.
+    let iface = lowered
+        .hir
+        .items
+        .iter()
+        .find_map(|item| match &item.kind {
+            HirItemKind::Interface(iface) => Some(iface),
+            _ => None,
+        })
+        .expect("expected an implendum item");
+    assert_eq!(owner.semantic, Some(HirOwnerRef::Def(iface.methods[0].def_id)));
 }
 
 #[test]
