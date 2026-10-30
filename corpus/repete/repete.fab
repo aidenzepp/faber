@@ -15,11 +15,14 @@ locale = "en"
 # =============================================================================
 #
 # What this teaches:
-#   • Test flakiness mitigation — `repete <N>` runs a test case up to N times
-#     until it passes; useful for non-deterministic or flaky tests
+#   • Repetition — `repete <N>` (en `repeat`) runs a test case up to N times
+#     and fails the case at the first failing run; a case passes only when
+#     every one of its N runs passes
 #   • Declared as a test modifier on `proba`
 #
 # Common mistakes:
+#   • Using `repete` as a retry for a flaky test — `faber test` does not run
+#     the case again after a failure, so one failing run fails the case.
 #   • Confusing `repete` (test repetition modifier) with `itera` (loop iterator) or `fac`/`dum` (loop constructs).
 #
 # See also: fragilis
@@ -37,6 +40,6 @@ locale = "en"
 #   declaration-only test modifier (whitelist: repete/repete.fab).
 #
 
-test "flaky guard" repeat 2 {
+test "runs twice" repeat 2 {
     assert true
 }
