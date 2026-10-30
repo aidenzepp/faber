@@ -14,13 +14,19 @@ locale = "en"
 # =============================================================================
 #
 # What this teaches:
-#   • Marks a test as fragile.
+#   • Marks a test as fragile — `fragilis <number>` (en `flaky`) takes a
+#     non-negative integer literal.
+#   • `faber test` rejects every `fragilis` case in 1.17.0: the body does not
+#     run and the case is reported as failed with
+#     `fragilis is rejected — flaky retries are not executed`.
 #
 # Common mistakes:
-#   • Marking a test as fragile without a reason — `fragilis <number>` requires a numeric identifier for the failure-tracking system.
+#   • Using `fragilis` to allow a test to fail or to retry it — `faber test`
+#     fails the case whether its body would pass or fail. The case below fails
+#     under `faber test` for that reason.
 # =============================================================================
 
-# fragilis — allow-failure test modifier
+# fragilis — flaky test modifier (rejected by faber test)
 #
 # GRAMMAR:
 #   testModifier :← 'fragilis' integer
