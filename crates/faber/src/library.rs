@@ -116,6 +116,18 @@ pub fn configure_library_home(flag: Option<&Path>, probe: Option<&Path>) {
     }
 }
 
+/// Pin the resolved library home (configured, else embedded) as the
+/// process-wide home.
+///
+/// WHY: session-driven commands such as `faber format` never build a
+/// [`LibraryResolver`]; their import resolver falls back only to the in-tree
+/// `lib/` baked in at build time, which an installed binary does not have.
+pub fn pin_resolved_library_home() {
+    if let Some(home) = resolved_library_home() {
+        radix::program::set_configured_library_home(Some(home.path));
+    }
+}
+
 fn manifest_library_home(probe: Option<&Path>) -> Option<PathBuf> {
     let start = probe_start_dir(probe)?;
     for dir in start.ancestors() {

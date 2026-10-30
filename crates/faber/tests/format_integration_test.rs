@@ -262,3 +262,82 @@ fn format_cmd_keeps_call_site_access_markers() {
     assert_canonical_reparses_with(body, "call markers CLI --stdout", Some(&english_pack()))
         .expect("reparse");
 }
+
+/// Run the checkout's `faber` with an isolated cache, so the embedded runtime
+/// (and its `lib/norma`) materializes under `cache`.
+fn run_faber_with_cache(cache: &Path, cwd: &Path, args: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_faber"))
+        .args(args)
+        .current_dir(cwd)
+        .env("XDG_CACHE_HOME", cache)
+        .output()
+        .expect("spawn faber")
+}
+
+/// The materialized embedded library home: `<cache>/faber/faber-runtime-*/lib`.
+fn embedded_library_home(cache: &Path) -> PathBuf {
+    fs::read_dir(cache.join("faber"))
+        .expect("read embedded runtime cache")
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| path.join("lib/norma/src").is_dir())
+        .expect("embedded runtime materialized with lib/norma")
+        .join("lib")
+}
+
+/// faber#2: an installed binary has no in-tree `lib/`, so `norma:*` must
+/// resolve from the embedded library home, as it does for `check`.
+///
+/// EDGE: a checkout build always finds the in-tree `lib/`. The probe module
+/// exists only in the materialized embedded copy, so the import resolves
+/// only when `format` consults the embedded home.
+#[test]
+fn format_cmd_resolves_norma_from_embedded_library_home() {
+    let temp_root = TempDir::new("faber-format", "embedded-norma");
+    let cache = temp_root.join("cache");
+    let package = temp_root.join("demo");
+    fs::create_dir_all(package.join("src")).expect("create package");
+    fs::write(
+        package.join("faber.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n\n[paths]\nsource = \"src\"\nentry = \"main.fab\"\n",
+    )
+    .expect("write manifest");
+
+    let doctor = run_faber_with_cache(&cache, &package, &["doctor"]);
+    assert!(doctor.status.success(), "faber doctor: {doctor:?}");
+    let probe = embedded_library_home(&cache).join("norma/src/embedded_home_probe.fab");
+    fs::write(&probe, "@ public\nfn answer() → int {\n    return 7\n}\n")
+        .expect("write embedded-only probe module");
+    fs::write(
+        package.join("src/main.fab"),
+        concat!(
+            "import from \"norma:text\" text\n",
+            "import from \"norma:embedded_home_probe\" probe\n\n",
+            "main {\n    print text.reverse(\"ab\")\n    print probe.answer()\n}\n",
+        ),
+    )
+    .expect("write main with probe import");
+
+    let check = run_faber_with_cache(&cache, &package, &["check", "."]);
+    assert!(
+        check.status.success(),
+        "control: faber check resolves the embedded home: {}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+
+    let format = run_faber_with_cache(&cache, &package, &["format", "--stdout", "src/main.fab"]);
+    let stdout = String::from_utf8_lossy(&format.stdout);
+    let stderr = String::from_utf8_lossy(&format.stderr);
+    assert!(
+        format.status.success(),
+        "faber format must resolve norma from the embedded home:\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("PKG001"),
+        "faber format refused a norma import: {stderr}"
+    );
+    assert!(
+        stdout.contains("norma:embedded_home_probe"),
+        "formatted output keeps the probe import: {stdout}"
+    );
+}

@@ -42,6 +42,10 @@ pub(super) fn effective_width(
 }
 
 pub fn cmd_format(command: &FormatCommand) {
+    // Before any session prepares the program module: `norma:*` resolves from
+    // the configured or embedded home, as it does for `check` (faber#2).
+    faber_cli::library::pin_resolved_library_home();
+
     // --stdin: read exactly one source document from stdin and print the
     // formatted result to stdout (implies stdout; no path arguments — enforced
     // at the CLI parse boundary). The diagnostic source name is `<stdin>`.
